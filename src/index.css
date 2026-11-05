@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Cairo', 'IBM Plex Sans Arabic', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --color-meezan-navy: #142B43;
+  --color-meezan-dark: #0B1725;
+  --color-meezan-gold: #D6AE57;
+  --color-meezan-gold-light: #F4E7C5;
+  --color-meezan-gold-dark: #B88E33;
+  --color-meezan-bg: #F5F7FA;
+  --color-meezan-text: #172B3A;
+}
+
+body {
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  background-color: #F5F7FA;
+  color: #172B3A;
+}
+
+/* Custom scrollbar for fintech look */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #EEF2F6;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Glassmorphism utility */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.glass-panel-dark {
+  background: rgba(20, 43, 67, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(214, 174, 87, 0.2);
+}
+
+/* Gold shimmer effect */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.gold-gradient-text {
+  background: linear-gradient(135deg, #D6AE57 0%, #F5D78E 50%, #B88E33 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

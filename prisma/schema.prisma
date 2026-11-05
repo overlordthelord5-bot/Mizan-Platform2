@@ -1,0 +1,614 @@
+// Prisma Schema for MEEZAN - Accounting & Financial Consulting Marketplace
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// ENUMS
+// -----------------------------------------------------------------------------
+
+enum UserRole {
+  CUSTOMER
+  ACCOUNTANT
+  ADMIN
+  SUPPORT_AGENT
+  SUPER_ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  PENDING_VERIFICATION
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING_REVIEW
+  VERIFIED
+  REJECTED
+  SUSPENDED
+}
+
+enum DeliveryType {
+  ONLINE_VIDEO
+  ONLINE_AUDIO
+  CHAT_SESSION
+  IN_PERSON
+  DOCUMENT_REVIEW
+}
+
+enum BookingStatus {
+  DRAFT
+  PENDING_PAYMENT
+  PAID
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  REFUND_PENDING
+  REFUNDED
+  DISPUTED
+  NO_SHOW
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  SUCCESSFUL
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentProvider {
+  MEEZA
+  FAWRY
+  VODAFONE_CASH
+  INSTAPAY
+  PAYMOB
+  CARD_VISA_MASTERCARD
+  SANDBOX_TEST
+}
+
+enum WalletTransactionType {
+  CONSULTATION_EARNING
+  PLATFORM_COMMISSION
+  WITHDRAWAL
+  REFUND_DEBIT
+  BONUS_CREDIT
+  ADJUSTMENT
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED_CUSTOMER_REFUND
+  RESOLVED_ACCOUNTANT_PAYOUT
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_USER
+  RESOLVED
+  CLOSED
+}
+
+// -----------------------------------------------------------------------------
+// USERS & PROFILES
+// -----------------------------------------------------------------------------
+
+model User {
+  id                String            @id @default(uuid())
+  fullName          String
+  email             String            @unique
+  phone             String?           @unique
+  passwordHash      String
+  role              UserRole          @default(CUSTOMER)
+  status            AccountStatus     @default(ACTIVE)
+  emailVerifiedAt   DateTime?
+  phoneVerifiedAt   DateTime?
+  lastLoginAt       DateTime?
+  avatar            String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  customerProfile   CustomerProfile?
+  accountantProfile AccountantProfile?
+  wallet            Wallet?
+  sessions          UserSession[]
+  notifications     Notification[]
+  reviewsWritten    Review[]          @relation("CustomerReviews")
+  supportTickets    SupportTicket[]
+  auditLogs         AuditLog[]        @relation("ActorAuditLogs")
+  favorites         Favorite[]
+  searchHistory     SearchHistory[]
+  disputesOpened    Dispute[]         @relation("DisputeOpener")
+  couponUsages      CouponUsage[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model CustomerProfile {
+  id                String       @id @default(uuid())
+  userId            String       @unique
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  city              String?
+  governorate       String?
+  companyName       String?
+  taxCardNumber     String?
+  preferredLanguage String       @default("ar")
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  bookings          Booking[]    @relation("CustomerBookings")
+}
+
+model AccountantProfile {
+  id                            String              @id @default(uuid())
+  userId                        String              @unique
+  user                          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  headline                      String
+  bio                           String
+  experienceYears               Int                 @default(1)
+  syndicateRegistrationNumber    String?             // رقم قيد نقابة التجاريين
+  certifiedPublicAccountantNumber String?            // سجل المحاسبين والمراجعين
+  verificationStatus            VerificationStatus  @default(UNVERIFIED)
+  ratingAverage                 Decimal             @default(5.0) @db.Decimal(3, 2)
+  ratingCount                   Int                 @default(0)
+  totalConsultations            Int                 @default(0)
+  city                          String
+  governorate                   String
+  languages                     String[]            @default(["العربية"])
+  hourlyRate                    Decimal             @default(400.0) @db.Decimal(10, 2)
+  availableForInstantBooking     Boolean             @default(true)
+  createdAt                     DateTime            @default(now())
+  updatedAt                     DateTime            @updatedAt
+
+  documents                     AccountantDocument[]
+  skills                        AccountantSkill[]
+  services                      AccountantService[]
+  availabilities                Availability[]
+  availabilityExceptions        AvailabilityException[]
+  bookings                      Booking[]           @relation("AccountantBookings")
+  reviewsReceived               Review[]            @relation("AccountantReviews")
+  favoritedBy                   Favorite[]
+
+  @@index([governorate])
+  @@index([verificationStatus])
+  @@index([ratingAverage])
+}
+
+model AccountantDocument {
+  id                 String             @id @default(uuid())
+  accountantId       String
+  accountant         AccountantProfile  @relation(fields: [accountantId], references: [id], onDelete: Cascade)
+  documentType       String             // NATIONAL_ID, SYNDICATE_CARD, CPA_LICENSE, TAX_CARD
+  title              String
+  storageKey         String
+  fileName           String
+  mimeType           String
+  verificationStatus VerificationStatus @default(PENDING_REVIEW)
+  reviewedBy         String?
+  reviewedAt         DateTime?
+  rejectionReason    String?
+  createdAt          DateTime           @default(now())
+}
+
+model Skill {
+  id          String            @id @default(uuid())
+  nameAr      String
+  nameEn      String
+  categoryId  String?
+  category    Category?         @relation(fields: [categoryId], references: [id])
+  accountants AccountantSkill[]
+}
+
+model AccountantSkill {
+  id              String            @id @default(uuid())
+  accountantId    String
+  accountant      AccountantProfile @relation(fields: [accountantId], references: [id], onDelete: Cascade)
+  skillId         String
+  skill           Skill             @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  experienceLevel String            @default("EXPERT")
+
+  @@unique([accountantId, skillId])
+}
+
+// -----------------------------------------------------------------------------
+// CATEGORIES & SERVICES
+// -----------------------------------------------------------------------------
+
+model Category {
+  id          String     @id @default(uuid())
+  nameAr      String
+  nameEn      String
+  slug        String     @unique
+  description String?
+  iconName    String?
+  imageUrl    String?
+  sortOrder   Int        @default(0)
+  active      Boolean    @default(true)
+  services    Service[]
+  skills      Skill[]
+}
+
+model Service {
+  id              String              @id @default(uuid())
+  categoryId      String
+  category        Category            @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  nameAr          String
+  nameEn          String
+  descriptionAr   String
+  descriptionEn   String
+  basePrice       Decimal             @default(350.00) @db.Decimal(10, 2)
+  durationMinutes Int                 @default(45)
+  deliveryType    DeliveryType        @default(ONLINE_VIDEO)
+  requiredDocs    String[]
+  active          Boolean             @default(true)
+  createdAt       DateTime            @default(now())
+
+  accountantLinks AccountantService[]
+  bookings        Booking[]
+}
+
+model AccountantService {
+  id              String            @id @default(uuid())
+  accountantId    String
+  accountant      AccountantProfile @relation(fields: [accountantId], references: [id], onDelete: Cascade)
+  serviceId       String
+  service         Service           @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  customPrice     Decimal?          @db.Decimal(10, 2)
+  durationMinutes Int?
+  active          Boolean           @default(true)
+
+  @@unique([accountantId, serviceId])
+}
+
+// -----------------------------------------------------------------------------
+// AVAILABILITY & SLOTS
+// -----------------------------------------------------------------------------
+
+model Availability {
+  id           String            @id @default(uuid())
+  accountantId String
+  accountant   AccountantProfile @relation(fields: [accountantId], references: [id], onDelete: Cascade)
+  dayOfWeek    Int               // 0: Sunday, 1: Monday, ... 6: Saturday
+  startTime    String            // "09:00"
+  endTime      String            // "17:00"
+  active       Boolean           @default(true)
+}
+
+model AvailabilityException {
+  id           String            @id @default(uuid())
+  accountantId String
+  accountant   AccountantProfile @relation(fields: [accountantId], references: [id], onDelete: Cascade)
+  date         DateTime
+  isUnavailable Boolean          @default(true)
+  reason       String?
+}
+
+// -----------------------------------------------------------------------------
+// BOOKINGS, PAYMENTS & WALLETS
+// -----------------------------------------------------------------------------
+
+model Booking {
+  id               String            @id @default(uuid())
+  bookingNumber    String            @unique
+  customerId       String
+  customer         CustomerProfile   @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Restrict)
+  accountantId     String
+  accountant       AccountantProfile @relation("AccountantBookings", fields: [accountantId], references: [id], onDelete: Restrict)
+  serviceId        String
+  service          Service           @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  scheduledDate    DateTime
+  startTime        String
+  endTime          String
+  durationMinutes  Int               @default(45)
+  status           BookingStatus     @default(PENDING_PAYMENT)
+  deliveryType     DeliveryType      @default(ONLINE_VIDEO)
+  customerNotes    String?
+  totalAmount      Decimal           @db.Decimal(10, 2)
+  platformFeeRate  Decimal           @default(0.15) @db.Decimal(5, 4) // Default 15%
+  platformFee      Decimal           @db.Decimal(10, 2)
+  accountantAmount Decimal           @db.Decimal(10, 2)
+  currency         String            @default("EGP")
+  meetingRoomId    String?
+  meetingNotes     String?
+  completedAt      DateTime?
+  cancelledAt      DateTime?
+  cancelReason     String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  documents        BookingDocument[]
+  payments         Payment[]
+  conversation     Conversation?
+  review           Review?
+  disputes         Dispute[]
+  walletEntries    WalletTransaction[]
+  couponUsage      CouponUsage?
+
+  @@index([customerId])
+  @@index([accountantId])
+  @@index([status])
+}
+
+model BookingDocument {
+  id          String   @id @default(uuid())
+  bookingId   String
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  uploaderId  String
+  fileName    String
+  fileSize    Int
+  mimeType    String
+  storageUrl  String
+  createdAt   DateTime @default(now())
+}
+
+model Payment {
+  id                   String          @id @default(uuid())
+  bookingId            String
+  booking              Booking         @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  amount               Decimal         @db.Decimal(10, 2)
+  currency             String          @default("EGP")
+  provider             PaymentProvider @default(SANDBOX_TEST)
+  providerRef          String?
+  status               PaymentStatus   @default(PENDING)
+  idempotencyKey       String?         @unique
+  paidAt               DateTime?
+  failureReason        String?
+  createdAt            DateTime        @default(now())
+
+  refunds              Refund[]
+}
+
+model Refund {
+  id          String        @id @default(uuid())
+  paymentId   String
+  payment     Payment       @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  amount      Decimal       @db.Decimal(10, 2)
+  reason      String
+  status      PaymentStatus @default(PENDING)
+  approvedBy  String?
+  processedAt DateTime?
+  createdAt   DateTime      @default(now())
+}
+
+model Wallet {
+  id               String              @id @default(uuid())
+  userId           String              @unique
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currency         String              @default("EGP")
+  balance          Decimal             @default(0.00) @db.Decimal(10, 2)
+  availableBalance Decimal             @default(0.00) @db.Decimal(10, 2)
+  pendingBalance   Decimal             @default(0.00) @db.Decimal(10, 2)
+  updatedAt        DateTime            @updatedAt
+
+  transactions     WalletTransaction[]
+  withdrawals      WithdrawalRequest[]
+}
+
+model WalletTransaction {
+  id             String                @id @default(uuid())
+  walletId       String
+  wallet         Wallet                @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  bookingId      String?
+  booking        Booking?              @relation(fields: [bookingId], references: [id])
+  type           WalletTransactionType
+  amount         Decimal               @db.Decimal(10, 2)
+  balanceAfter   Decimal               @db.Decimal(10, 2)
+  referenceNote  String?
+  createdAt      DateTime              @default(now())
+}
+
+model WithdrawalRequest {
+  id             String        @id @default(uuid())
+  walletId       String
+  wallet         Wallet        @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  amount         Decimal       @db.Decimal(10, 2)
+  method         String        // INSTAPAY, BANK_TRANSFER, VODAFONE_CASH
+  accountDetails String        // IBAN / Mobile number / InstaPay handle
+  status         PaymentStatus @default(PENDING)
+  processedAt    DateTime?
+  referenceCode  String?
+  createdAt      DateTime      @default(now())
+}
+
+// -----------------------------------------------------------------------------
+// MESSAGES, REVIEWS & DISPUTES
+// -----------------------------------------------------------------------------
+
+model Conversation {
+  id        String    @id @default(uuid())
+  bookingId String    @unique
+  booking   Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  messages  Message[]
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  content        String
+  attachmentUrl  String?
+  createdAt      DateTime     @default(now())
+  readAt         DateTime?
+}
+
+model Review {
+  id           String            @id @default(uuid())
+  bookingId    String            @unique
+  booking      Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  customerId   String
+  customer     User              @relation("CustomerReviews", fields: [customerId], references: [id])
+  accountantId String
+  accountant   AccountantProfile @relation("AccountantReviews", fields: [accountantId], references: [id])
+  rating       Int               // 1 to 5
+  comment      String
+  published    Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+}
+
+model Dispute {
+  id          String        @id @default(uuid())
+  bookingId   String
+  booking     Booking       @relation(fields: [bookingId], references: [id])
+  openedById  String
+  openedBy    User          @relation("DisputeOpener", fields: [openedById], references: [id])
+  reason      String
+  description String
+  status      DisputeStatus @default(OPEN)
+  resolution  String?
+  resolvedBy  String?
+  resolvedAt  DateTime?
+  createdAt   DateTime      @default(now())
+}
+
+// -----------------------------------------------------------------------------
+// PLATFORM SETTINGS, NOTIFICATIONS & AUDIT
+// -----------------------------------------------------------------------------
+
+model PlatformSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique // e.g. "DEFAULT_COMMISSION_PERCENT", "VAT_RATE"
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actor      User?    @relation("ActorAuditLogs", fields: [actorId], references: [id])
+  action     String   // e.g. "COMMISSION_CHANGED", "ACCOUNTANT_VERIFIED", "PAYMENT_SUCCESS"
+  entityType String
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+}
+
+model UserSession {
+  id               String    @id @default(uuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionTokenHash String    @unique
+  ipAddress        String?
+  userAgent        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+}
+
+model Coupon {
+  id            String        @id @default(uuid())
+  code          String        @unique
+  discountType  String        // PERCENTAGE or FIXED_EGP
+  discountValue Decimal       @db.Decimal(10, 2)
+  startsAt      DateTime
+  expiresAt     DateTime
+  usageLimit    Int           @default(100)
+  timesUsed     Int           @default(0)
+  active        Boolean       @default(true)
+  usages        CouponUsage[]
+}
+
+model CouponUsage {
+  id        String   @id @default(uuid())
+  couponId  String
+  coupon    Coupon   @relation(fields: [couponId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  bookingId String   @unique
+  booking   Booking  @relation(fields: [bookingId], references: [id])
+  usedAt    DateTime @default(now())
+}
+
+model SupportTicket {
+  id         String         @id @default(uuid())
+  userId     String
+  user       User           @relation(fields: [userId], references: [id])
+  subject    String
+  category   String
+  priority   TicketPriority @default(MEDIUM)
+  status     TicketStatus   @default(OPEN)
+  assignedTo String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+}
+
+model Favorite {
+  id           String            @id @default(uuid())
+  customerId   String
+  customer     User              @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  accountantId String
+  accountant   AccountantProfile @relation(fields: [accountantId], references: [id], onDelete: Cascade)
+  createdAt    DateTime          @default(now())
+
+  @@unique([customerId, accountantId])
+}
+
+model SearchHistory {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  query     String
+  filters   Json?
+  createdAt DateTime @default(now())
+}
+
+model BlogPost {
+  id            String   @id @default(uuid())
+  titleAr       String
+  titleEn       String
+  slug          String   @unique
+  contentAr     String
+  contentEn     String
+  featuredImage String?
+  readTimeMin   Int      @default(5)
+  publishedAt   DateTime @default(now())
+}
+
+model FAQ {
+  id         String  @id @default(uuid())
+  questionAr String
+  questionEn String
+  answerAr   String
+  answerEn   String
+  category   String
+  sortOrder  Int     @default(0)
+  active     Boolean @default(true)
+}
